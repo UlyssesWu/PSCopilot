@@ -1,0 +1,4 @@
+[submodule "CopilotDev.NET"]
+	path = CopilotDev.NET
+	url = https://github.com/MonarchSolutions/CopilotDev.NET.git
+	branch = main
