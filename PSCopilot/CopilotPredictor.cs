@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Management.Automation;
 using System.Management.Automation.Subsystem;
 using System.Management.Automation.Subsystem.Prediction;
@@ -14,6 +15,9 @@ namespace PSCopilot
         private readonly Guid _guid;
         private ICopilotApi _copilot;
         private readonly HttpClient _client = new();
+
+        private List<string> _inlinePredicts = new List<string>();
+        private List<string> _historyPredicts = new List<string>();
 
         internal CopilotPredictor(string guid)
         {
@@ -49,45 +53,55 @@ namespace PSCopilot
         public SuggestionPackage GetSuggestion(PredictionClient client, PredictionContext context, CancellationToken cancellationToken)
         {
             //Must be fast.
-            if (!Debugger.IsAttached)
-            {
-                Debugger.Launch();
-            }
+            //if (!Debugger.IsAttached)
+            //{
+            //    Debugger.Launch();
+            //}
+
             string input = context.InputAst.Extent.Text;
             if (string.IsNullOrWhiteSpace(input))
             {
+                if (_historyPredicts.Count > 0)
+                {
+                    return new SuggestionPackage(_historyPredicts.Select(s => new PredictiveSuggestion(s)).ToList());
+                }
                 return default;
             }
 
-            var cancelToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cancelToken.CancelAfter(10000);
-            
-            var task = _copilot.GetCompletionsAsync(new CopilotParameters()
+            PerformInlinePredict(input);
+
+            var hp = _historyPredicts.ToImmutableArray();
+            var ip = _inlinePredicts.ToImmutableArray();
+            List<PredictiveSuggestion> p = new List<PredictiveSuggestion>();
+            if (hp.Length > 0)
             {
-                Prompt = @$"# PowerShell.ps1
-{input}", MaxTokens = 140
-            }, false);
-            task.Wait();
-            if (task.IsCompletedSuccessfully)
-            {
-                var result = task.Result;
-                var suggestion = string.Join("", result.Select(e => e.Choices[0].Text)).TrimEnd();
-                if (suggestion.Length > 0)
-                {
-                    suggestion = input + suggestion;
-                }
-                return new SuggestionPackage(new List<PredictiveSuggestion>{
-                    new PredictiveSuggestion(suggestion)
-                });
+                var historyPredict = hp[^1];
+                p.Add(new (historyPredict));
             }
-            else
+
+            p.AddRange(ip.Where(s => s.StartsWith(input, StringComparison.InvariantCultureIgnoreCase)).Select(s => new PredictiveSuggestion(s)));
+            if (p.Count > 0)
             {
-                return new SuggestionPackage(new List<PredictiveSuggestion>{
-                    new PredictiveSuggestion("task not completed", "copilot")
-                });
+                return new SuggestionPackage(p);
             }
 
             return default;
+        }
+
+        private async Task PerformInlinePredict(string current)
+        {
+            var completions = await _copilot.GetCompletionsAsync(new CopilotParameters()
+            {
+                Prompt = @$"# PowerShell.ps1
+{current}",
+                MaxTokens = 140
+            }, false);
+
+            var suggestion = string.Join("", completions.Select(e => e.Choices[0].Text)).TrimEnd();
+            if (!string.IsNullOrEmpty(suggestion))
+            {
+                _inlinePredicts.Add(current + suggestion);
+            }
         }
 
         #region "interface methods for processing feedback"
@@ -98,7 +112,15 @@ namespace PSCopilot
         /// <param name="client">Represents the client that initiates the call.</param>
         /// <param name="feedback">A specific type of feedback.</param>
         /// <returns>True or false, to indicate whether the specific feedback is accepted.</returns>
-        public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback) => false;
+        public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback)
+        {
+            if (feedback == PredictorFeedbackKind.CommandLineAccepted)
+            {
+                return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// One or more suggestions provided by the predictor were displayed to the user.
@@ -127,7 +149,29 @@ namespace PSCopilot
         /// </summary>
         /// <param name="client">Represents the client that initiates the call.</param>
         /// <param name="history">History command lines provided as references for prediction.</param>
-        public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history) { }
+        public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history)
+        {
+            _inlinePredicts.Clear();
+            _historyPredicts.Clear();
+            
+            var task = _copilot.GetCompletionsAsync(new CopilotParameters()
+            {
+                Prompt = @$"# PowerShell.ps1
+{string.Join("\r\n", history)}
+",
+                MaxTokens = 140
+            }, false);
+            task.Wait();
+            if (task.IsCompletedSuccessfully)
+            {
+                var result = task.Result;
+                var suggestion = string.Join("", result.Select(e => e.Choices[0].Text)).TrimEnd();
+                if (suggestion.Length > 0)
+                {
+                    _historyPredicts.Add(suggestion);
+                }
+            }
+        }
 
         /// <summary>
         /// A command line was done execution.
