@@ -48,10 +48,6 @@ namespace PSCopilot
 
         public bool InlineSuggestionUseHistory { get; set; } = true;
         public bool LineSuggestionWithHistory { get; set; } = true;
-#if DEBUG
-        public bool DebuggerAttach { get; set; } = false;
-#endif
-
 
         public int MaxTokens { get; set; } = 140;
         public int PredictCountEachQuery { get; set; } = 2;
@@ -65,14 +61,6 @@ namespace PSCopilot
         /// <returns>An instance of <see cref="SuggestionPackage"/>.</returns>
         public SuggestionPackage GetSuggestion(PredictionClient client, PredictionContext context, CancellationToken cancellationToken)
         {
-#if DEBUG
-            if (!Debugger.IsAttached && DebuggerAttach)
-            {
-                DebuggerAttach = false;
-                Debugger.Launch();
-            }
-#endif
-
             string input = context.InputAst.Extent.Text;
             if (string.IsNullOrWhiteSpace(input))
             {

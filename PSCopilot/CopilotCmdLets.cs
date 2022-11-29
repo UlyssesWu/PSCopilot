@@ -2,6 +2,7 @@
 using CopilotDev.NET.Api.Entity;
 using CopilotDev.NET.Api.Impl;
 using System.Management.Automation;
+using Debugger = System.Diagnostics.Debugger;
 
 namespace PSCopilot
 {
@@ -21,10 +22,10 @@ namespace PSCopilot
             var copilotAuthentication = new CopilotAuthentication(copilotConfiguration, dataStore, _client);
             copilotAuthentication.OnEnterDeviceCode += data =>
             {
-                WriteObject($"Open URL {data.Url} to enter the device code: {data.UserCode}");
+                Console.WriteLine($"Open URL {data.Url} to enter the device code: {data.UserCode}");
                 if (!string.IsNullOrEmpty(data.Url))
                 {
-                    Process.Start(data.Url);
+                    Process.Start(new ProcessStartInfo(data.Url) { UseShellExecute = true });
                 }
             };
             var task = copilotAuthentication.GetAccessTokenAsync();
@@ -85,15 +86,22 @@ namespace PSCopilot
 
         protected override void ProcessRecord()
         {
+#if DEBUG
+            if (DebuggerAttach)
+            {
+                if (!Debugger.IsAttached && DebuggerAttach)
+                {
+                    DebuggerAttach = false;
+                    Debugger.Launch();
+                }
+            }
+#endif
+
             if (CopilotPredictor.Instance == null)
             {
                 WriteObject("Copilot is not working.");
                 return;
             }
-
-#if DEBUG
-            CopilotPredictor.Instance.DebuggerAttach = DebuggerAttach;
-#endif
 
             if (MaxTokens is < 0 or > 10240)
             {
