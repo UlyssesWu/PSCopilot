@@ -1,12 +1,10 @@
 ﻿using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Management.Automation;
 using System.Management.Automation.Subsystem;
 using System.Management.Automation.Subsystem.Prediction;
 using CopilotDev.NET.Api;
 using CopilotDev.NET.Api.Entity;
 using CopilotDev.NET.Api.Impl;
-using Debugger = System.Diagnostics.Debugger;
 
 namespace PSCopilot
 {
@@ -52,6 +50,10 @@ namespace PSCopilot
         public int MaxTokens { get; set; } = 140;
         public int PredictCountEachQuery { get; set; } = 2;
 
+        private string _osPlatform = GetPlatform();
+        private string _lastFailedCommand = "";
+        private string[] _stopWords = new[] {"\n", ";"};
+
         /// <summary>
         /// Get the predictive suggestions. It indicates the start of a suggestion rendering session.
         /// </summary>
@@ -71,10 +73,10 @@ namespace PSCopilot
                 return default;
             }
 
-            PerformInlinePredict(input);
+            PerformInlinePredict(input).ConfigureAwait(false);
 
             var hp = _historyPredicts.ToImmutableArray();
-            var ip = _inlinePredicts.ToImmutableArray();
+            var ip = _inlinePredicts.Reverse().Take(8).ToImmutableArray();
             List<PredictiveSuggestion> p = new List<PredictiveSuggestion>();
 
             var hits = ip.Where(s => s.StartsWith(input, StringComparison.InvariantCultureIgnoreCase)).ToHashSet();
@@ -98,13 +100,15 @@ namespace PSCopilot
             string text = current;
             if (InlineSuggestionUseHistory && _history is { Count: > 0 })
             {
-                text = string.Join(Environment.NewLine, _history) + Environment.NewLine + current;
+                text = string.Join(Environment.NewLine, _history.Where(s => s != _lastFailedCommand)) + Environment.NewLine + current;
             }
             var completions = await _copilot.GetCompletionsAsync(new CopilotParameters()
             {
-                Prompt = @$"# PowerShell.ps1
-{text}",
-                MaxTokens = MaxTokens
+//                Prompt = @$"# PowerShell.ps1 # running on {_osPlatform}
+//{text}",
+Prompt = $@"PowerShell 7.3.0 ({_osPlatform})
+PS > {text}",
+                MaxTokens = MaxTokens, Stop = _stopWords
             }, false);
 
             var suggestion = string.Join("", completions.Select(e => e.Choices[0].Text)).TrimEnd();
@@ -121,6 +125,26 @@ namespace PSCopilot
             _history = null;
         }
 
+        private static string GetPlatform()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                return "Windows";
+            }
+
+            if (OperatingSystem.IsLinux())
+            {
+                return "Linux";
+            }
+
+            if (OperatingSystem.IsMacOS())
+            {
+                return "MacOS";
+            }
+
+            return "Windows";
+        }
+
         #region "interface methods for processing feedback"
 
         /// <summary>
@@ -131,7 +155,7 @@ namespace PSCopilot
         /// <returns>True or false, to indicate whether the specific feedback is accepted.</returns>
         public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback)
         {
-            if (feedback == PredictorFeedbackKind.CommandLineAccepted)
+            if (feedback is PredictorFeedbackKind.CommandLineAccepted or PredictorFeedbackKind.CommandLineExecuted)
             {
                 return true;
             }
@@ -179,8 +203,8 @@ namespace PSCopilot
 
             var result = await _copilot.GetCompletionsAsync(new CopilotParameters()
             {
-                Prompt = @$"# PowerShell.ps1
-{string.Join("\r\n", history)}
+                Prompt = @$"# {_osPlatform}_PowerShell.ps1
+{string.Join(Environment.NewLine, history.Where(s => s != _lastFailedCommand))}
 ",
                 MaxTokens = MaxTokens, N = PredictCountEachQuery
             }, false);
@@ -205,7 +229,14 @@ namespace PSCopilot
         /// <param name="client">Represents the client that initiates the call.</param>
         /// <param name="commandLine">The last accepted command line.</param>
         /// <param name="success">Shows whether the execution was successful.</param>
-        public void OnCommandLineExecuted(PredictionClient client, string commandLine, bool success) { }
+        public void OnCommandLineExecuted(PredictionClient client, string commandLine, bool success)
+        {
+            if (!success)
+            {
+                _lastFailedCommand = commandLine;
+                _inlinePredicts.Clear();
+            }
+        }
 
         #endregion;
     }

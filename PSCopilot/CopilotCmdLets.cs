@@ -112,7 +112,6 @@ namespace PSCopilot
             CopilotPredictor.Instance.InlineSuggestionUseHistory = UseHistoryInline;
             CopilotPredictor.Instance.LineSuggestionWithHistory = UseHistory;
 
-
         }
     }
 }
