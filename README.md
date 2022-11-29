@@ -14,11 +14,11 @@ This is a project just for fun, don't take it seriously🤣
 2. Open Powershell in Windows Terminal. 
   `Import-Module {path to PSCopilot.dll}`.
 3. `Request-Copilot`, and finish the verification.
-4. Now you can use PSCopilot. Press `F2` *repeatedly* to get suggestions.
+4. Now you can use PSCopilot. Press <kbd>F2</kbd> *repeatedly* to get suggestions.
 
 You can use this pattern to *suggest* Copilot:
 
-`echo "shutdown the computer in 60s"; ` (now Press `F2`)
+`echo "shutdown the computer in 60s"; ` (now Press <kbd>F2</kbd>)
 
 (Maybe `Write-Output` is better than `echo`.)
 
@@ -37,13 +37,13 @@ This project is using [copilotplayground/CopilotDev.NET](https://github.com/copi
 
 ## FAQ
 
-### Why do I have to Press `F2` repeatedly like a psycho?
-PSReadLine Predictor mechanism does **not** support async suggestion. We have to return suggestions immediately. When you input or press `F2`, a query will be send to Copilot. The returned suggestion will be kept, and will be displayed when you press `F2` again.
+### Why do I have to Press <kbd>F2</kbd> repeatedly like a psycho?
+PSReadLine Predictor mechanism does **not** support async suggestion. We have to return suggestions immediately. When you input or press <kbd>F2</kbd>, a query will be send to Copilot. The returned suggestion will be kept, and will be displayed when you press <kbd>F2</kbd> again.
 
 ### There are many useless suggestions.
 Yes, it is silly🤡
 
-To clear input history, use both `Alt+F7` and `Clear-Copilot` command.
+To clear input history, use both <kbd>Alt</kbd> + <kbd>F7</kbd> and `Clear-Copilot` command.
 
 ---
 by Ulysses (wdwxy12345{at}gmail.com)
