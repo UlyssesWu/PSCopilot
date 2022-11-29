@@ -4,6 +4,9 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Authors>UlyssesWu</Authors>
+    <PackageProjectUrl>https://github.com/UlyssesWu/PSCopilot</PackageProjectUrl>
+    <Title>PSCopilot</Title>
   </PropertyGroup>
 
   <ItemGroup>

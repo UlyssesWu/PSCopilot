@@ -12,12 +12,15 @@ namespace PSCopilot
 {
     public class CopilotPredictor : ICommandPredictor
     {
+        internal static CopilotPredictor? Instance = null;
+
         private readonly Guid _guid;
-        private ICopilotApi _copilot;
+        private readonly ICopilotApi _copilot;
         private readonly HttpClient _client = new();
 
-        private List<string> _inlinePredicts = new List<string>();
-        private List<string> _historyPredicts = new List<string>();
+        private HashSet<string> _inlinePredicts = new HashSet<string>();
+        private HashSet<string> _historyPredicts = new HashSet<string>();
+        private IReadOnlyList<string>? _history = null;
 
         internal CopilotPredictor(string guid)
         {
@@ -27,7 +30,7 @@ namespace PSCopilot
             var copilotAuthentication = new CopilotAuthentication(copilotConfiguration, dataStore, _client);
             _copilot = new CopilotApi(copilotConfiguration, copilotAuthentication, _client);
         }
-
+        
         /// <summary>
         /// Gets the unique identifier for a subsystem implementation.
         /// </summary>
@@ -43,6 +46,16 @@ namespace PSCopilot
         /// </summary>
         public string Description => "Github Copilot for PowerShell";
 
+        public bool InlineSuggestionUseHistory { get; set; } = true;
+        public bool LineSuggestionWithHistory { get; set; } = true;
+#if DEBUG
+        public bool DebuggerAttach { get; set; } = false;
+#endif
+
+
+        public int MaxTokens { get; set; } = 140;
+        public int PredictCountEachQuery { get; set; } = 2;
+
         /// <summary>
         /// Get the predictive suggestions. It indicates the start of a suggestion rendering session.
         /// </summary>
@@ -52,11 +65,13 @@ namespace PSCopilot
         /// <returns>An instance of <see cref="SuggestionPackage"/>.</returns>
         public SuggestionPackage GetSuggestion(PredictionClient client, PredictionContext context, CancellationToken cancellationToken)
         {
-            //Must be fast.
-            //if (!Debugger.IsAttached)
-            //{
-            //    Debugger.Launch();
-            //}
+#if DEBUG
+            if (!Debugger.IsAttached && DebuggerAttach)
+            {
+                DebuggerAttach = false;
+                Debugger.Launch();
+            }
+#endif
 
             string input = context.InputAst.Extent.Text;
             if (string.IsNullOrWhiteSpace(input))
@@ -73,13 +88,15 @@ namespace PSCopilot
             var hp = _historyPredicts.ToImmutableArray();
             var ip = _inlinePredicts.ToImmutableArray();
             List<PredictiveSuggestion> p = new List<PredictiveSuggestion>();
+
+            var hits = ip.Where(s => s.StartsWith(input, StringComparison.InvariantCultureIgnoreCase)).ToHashSet();
+            p.AddRange(hits.Select(s => new PredictiveSuggestion(s)));
+            _inlinePredicts.RemoveWhere(s => !hits.Contains(s));
             if (hp.Length > 0)
             {
                 var historyPredict = hp[^1];
-                p.Add(new (historyPredict));
+                p.Add(new(historyPredict));
             }
-
-            p.AddRange(ip.Where(s => s.StartsWith(input, StringComparison.InvariantCultureIgnoreCase)).Select(s => new PredictiveSuggestion(s)));
             if (p.Count > 0)
             {
                 return new SuggestionPackage(p);
@@ -90,11 +107,16 @@ namespace PSCopilot
 
         private async Task PerformInlinePredict(string current)
         {
+            string text = current;
+            if (InlineSuggestionUseHistory && _history is { Count: > 0 })
+            {
+                text = string.Join(Environment.NewLine, _history) + Environment.NewLine + current;
+            }
             var completions = await _copilot.GetCompletionsAsync(new CopilotParameters()
             {
                 Prompt = @$"# PowerShell.ps1
-{current}",
-                MaxTokens = 140
+{text}",
+                MaxTokens = MaxTokens
             }, false);
 
             var suggestion = string.Join("", completions.Select(e => e.Choices[0].Text)).TrimEnd();
@@ -102,6 +124,13 @@ namespace PSCopilot
             {
                 _inlinePredicts.Add(current + suggestion);
             }
+        }
+
+        public void ClearPredicts()
+        {
+            _inlinePredicts.Clear();
+            _historyPredicts.Clear();
+            _history = null;
         }
 
         #region "interface methods for processing feedback"
@@ -149,26 +178,35 @@ namespace PSCopilot
         /// </summary>
         /// <param name="client">Represents the client that initiates the call.</param>
         /// <param name="history">History command lines provided as references for prediction.</param>
-        public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history)
+        public async void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history)
         {
             _inlinePredicts.Clear();
             _historyPredicts.Clear();
-            
-            var task = _copilot.GetCompletionsAsync(new CopilotParameters()
+            _history = history;
+
+            if (!LineSuggestionWithHistory)
+            {
+                return;
+            }
+
+            var result = await _copilot.GetCompletionsAsync(new CopilotParameters()
             {
                 Prompt = @$"# PowerShell.ps1
 {string.Join("\r\n", history)}
 ",
-                MaxTokens = 140
+                MaxTokens = MaxTokens, N = PredictCountEachQuery
             }, false);
-            task.Wait();
-            if (task.IsCompletedSuccessfully)
+            
+            if (result is { Count: > 0 })
             {
-                var result = task.Result;
-                var suggestion = string.Join("", result.Select(e => e.Choices[0].Text)).TrimEnd();
-                if (suggestion.Length > 0)
+                var suggestions = result.GroupBy(e => e.Choices[0].Index)
+                    .Select(g => string.Join("", g.Select(e => e.Choices[0].Text)).TrimEnd()).Where(s => !string.IsNullOrEmpty(s))
+                    .ToArray();
+                
+                if (suggestions.Length > 0)
                 {
-                    _historyPredicts.Add(suggestion);
+                    foreach (var suggestion in suggestions)
+                        _historyPredicts.Add(suggestion);
                 }
             }
         }
@@ -198,6 +236,7 @@ namespace PSCopilot
         {
             var predictor = new CopilotPredictor(Identifier);
             SubsystemManager.RegisterSubsystem(SubsystemKind.CommandPredictor, predictor);
+            CopilotPredictor.Instance = predictor;
         }
 
         /// <summary>
@@ -206,6 +245,7 @@ namespace PSCopilot
         public void OnRemove(PSModuleInfo psModuleInfo)
         {
             SubsystemManager.UnregisterSubsystem(SubsystemKind.CommandPredictor, new Guid(Identifier));
+            CopilotPredictor.Instance = null;
         }
     }
 }

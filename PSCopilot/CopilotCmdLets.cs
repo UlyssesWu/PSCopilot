@@ -50,4 +50,61 @@ namespace PSCopilot
             base.ProcessRecord();
         }
     }
+
+    [Cmdlet(VerbsCommon.Clear, "Copilot")]
+    public class ClearCopilotCmdLet : Cmdlet
+    {
+        protected override void ProcessRecord()
+        {
+            if (CopilotPredictor.Instance == null)
+            {
+                WriteObject("Copilot is not working.");
+                return;
+            }
+
+            CopilotPredictor.Instance.ClearPredicts();
+        }
+    }
+
+    [Cmdlet(VerbsCommon.Set, "Copilot")]
+    public class SetCopilotCmdLet : Cmdlet
+    {
+        [Alias("h")]
+        [Parameter]
+        public bool UseHistory { get; set; } = true;
+        [Alias("hi")]
+        [Parameter]
+        public bool UseHistoryInline { get; set; } = true;
+        [Alias("t")]
+        [Parameter] public int MaxTokens { get; set; } = -1;
+
+#if DEBUG
+        [Alias("dbg")]
+        [Parameter] public SwitchParameter DebuggerAttach { get; set; }
+#endif
+
+        protected override void ProcessRecord()
+        {
+            if (CopilotPredictor.Instance == null)
+            {
+                WriteObject("Copilot is not working.");
+                return;
+            }
+
+#if DEBUG
+            CopilotPredictor.Instance.DebuggerAttach = DebuggerAttach;
+#endif
+
+            if (MaxTokens is < 0 or > 10240)
+            {
+                MaxTokens = 140;
+            }
+
+            CopilotPredictor.Instance.MaxTokens = MaxTokens;
+            CopilotPredictor.Instance.InlineSuggestionUseHistory = UseHistoryInline;
+            CopilotPredictor.Instance.LineSuggestionWithHistory = UseHistory;
+
+
+        }
+    }
 }
