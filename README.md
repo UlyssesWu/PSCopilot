@@ -3,6 +3,8 @@ Use **Copilot** to suggest commands when using Powershell.
 
 This is a project just for fun, don't take it seriously🤣
 
+![PSCopilot](https://github.com/UlyssesWu/PSCopilot/blob/main/img/PSCopilot_1.png)
+
 ## Requirements
 1. Powershell 7.2+ with **PSReadLine** module installed (usually by default).
 2. A valid Copilot subscription.
@@ -21,6 +23,8 @@ You can use this pattern to *suggest* Copilot:
 (Maybe `Write-Output` is better than `echo`.)
 
 (Optional) You can also copy all files to `$PSHOME\Modules\PSCopilot` and use `Import-Module PSCopilot` to launch PSCopilot.
+
+![PSCopilot_demo](https://github.com/UlyssesWu/PSCopilot/blob/main/img/PSCopilot_2.png)
 
 ## Debug
 1. Build the project with `Debug` configuration.
