@@ -18,7 +18,7 @@ This is a project just for fun, don't take it seriously🤣
 
 You can use this pattern to *suggest* Copilot:
 
-`echo "shutdown the computer in 60s; "` (now Press `F2`)
+`echo "shutdown the computer in 60s"; ` (now Press `F2`)
 
 (Maybe `Write-Output` is better than `echo`.)
 
@@ -33,11 +33,11 @@ You can use this pattern to *suggest* Copilot:
 3. `Set-Copilot -dbg`. Debugger Attach dialog will pop up.
 
 ## Credits
-This project is using [copilotplayground/CopilotDev.NET](https://github.com/copilotplayground/CopilotDev.NET). Much thanks to the author **TheFortification**.
+This project is using [copilotplayground/CopilotDev.NET](https://github.com/copilotplayground/CopilotDev.NET) (license: MIT). Much thanks to the author **TheFortification**.
 
 ## FAQ
 
-### Why I have to Press `F2` repeatedly like a psycho?
+### Why do I have to Press `F2` repeatedly like a psycho?
 PSReadLine Predictor mechanism does **not** support async suggestion. We have to return suggestions immediately. When you input or press `F2`, a query will be send to Copilot. The returned suggestion will be kept, and will be displayed when you press `F2` again.
 
 ### There are many useless suggestions.
